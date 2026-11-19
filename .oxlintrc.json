@@ -147,6 +147,10 @@
     },
     {
       "files": [
+        "app/components/lesson/curriculum-sidebar.tsx",
+        "app/components/lesson/full-lesson.tsx",
+        "app/components/lesson/locked-lesson.tsx",
+        "app/components/lesson/quiz-section.tsx",
         "app/components/comment-thread.tsx",
         "app/components/dev-ui.tsx",
         "app/components/monaco-markdown-editor.tsx",
@@ -155,6 +159,9 @@
         "app/components/star-rating.tsx",
         "app/components/ui/chart.tsx",
         "app/components/youtube-player.tsx",
+        "app/lib/lesson-course.server.ts",
+        "app/lib/lesson-quiz.server.ts",
+        "app/lib/lesson-thread.server.ts",
         "app/lib/comments.server.ts",
         "app/lib/notification-feed.knock.ts",
         "app/lib/notifications.fake.server.ts",
