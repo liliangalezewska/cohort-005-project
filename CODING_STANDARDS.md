@@ -42,9 +42,10 @@ Test setup calls the module's own functions. When the function you need does
 not exist, add it to the module rather than inserting rows directly, so a
 change to how the module stores its data leaves its tests alone.
 
-## Keep files under 5000 tokens
+## Keep files under 500 lines
 
-Keep every file under 5000 tokens.
+`npm run lint:oxlint` enforces this (`max-lines`, blank lines and comments
+not counted). Split a file before the lint fails, not after.
 
 ## Wrap related writes in a transaction
 
