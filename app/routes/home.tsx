@@ -1,5 +1,5 @@
 import { Link } from "react-router";
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import type { Route } from "./+types/home";
 import { Button } from "~/components/ui/button";
 import {
@@ -8,11 +8,10 @@ import {
   CardFooter,
   CardHeader,
 } from "~/components/ui/card";
-import { CourseStatus } from "~/db/schema";
 import {
   BookOpen,
   GraduationCap,
-  Users,
+  Layers,
   ArrowRight,
   User,
   Moon,
@@ -22,9 +21,10 @@ import { CourseImage } from "~/components/course-image";
 import { DevUI } from "~/components/dev-ui";
 import { getCurrentUserId, getDevCountry } from "~/lib/session";
 import { getCountryTierInfo, COUNTRIES } from "~/lib/ppp";
-import { eq, like, and, or, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db } from "~/db";
-import { courses, categories, users, modules, lessons } from "~/db/schema";
+import { users } from "~/db/schema";
+import { homepage } from "~/modules/homepage/index.server";
 
 function getAllUsers() {
   return db.select().from(users).all();
@@ -34,114 +34,19 @@ function getUserById(id: number) {
   return db.select().from(users).where(eq(users.id, id)).get();
 }
 
-function getAllCategories() {
-  return db.select().from(categories).orderBy(categories.name).all();
-}
-
-function buildCourseQuery(
-  search: string | null,
-  category: string | null,
-  status: CourseStatus | null,
-  sortBy: string | null,
-  limit: number,
-  offset: number
-) {
-  const conditions = [];
-
-  if (status) {
-    conditions.push(eq(courses.status, status));
-  }
-
-  if (search) {
-    const term = `%${search}%`;
-    conditions.push(
-      or(like(courses.title, term), like(courses.description, term))
-    );
-  }
-
-  const query = db
-    .select({
-      id: courses.id,
-      title: courses.title,
-      slug: courses.slug,
-      description: courses.description,
-      salesCopy: courses.salesCopy,
-      instructorId: courses.instructorId,
-      categoryId: courses.categoryId,
-      status: courses.status,
-      coverImageUrl: courses.coverImageUrl,
-      price: courses.price,
-      pppEnabled: courses.pppEnabled,
-      createdAt: courses.createdAt,
-      updatedAt: courses.updatedAt,
-      instructorName: users.name,
-      instructorAvatarUrl: users.avatarUrl,
-      categoryName: categories.name,
-    })
-    .from(courses)
-    .innerJoin(users, eq(courses.instructorId, users.id))
-    .innerJoin(categories, eq(courses.categoryId, categories.id));
-
-  if (category) {
-    conditions.push(eq(categories.slug, category));
-  }
-
-  const filtered =
-    conditions.length > 0 ? query.where(and(...conditions)) : query;
-
-  const sorted =
-    sortBy === "title"
-      ? filtered.orderBy(courses.title)
-      : sortBy === "oldest"
-        ? filtered.orderBy(courses.createdAt)
-        : filtered.orderBy(sql`${courses.createdAt} DESC`);
-
-  return sorted.limit(limit).offset(offset).all();
-}
-
-function getLessonCountForCourse(courseId: number) {
-  const courseModules = db
-    .select({ id: modules.id })
-    .from(modules)
-    .where(eq(modules.courseId, courseId))
-    .all();
-
-  if (courseModules.length === 0) return 0;
-
-  const count = db
-    .select({ count: sql<number>`count(*)` })
-    .from(lessons)
-    .where(or(...courseModules.map((m) => eq(lessons.moduleId, m.id))))
-    .get();
-
-  return count?.count ?? 0;
-}
-
 export function meta() {
   return [
     { title: "Cadence — Learn at your own pace" },
     {
       name: "description",
       content:
-        "A modern course platform for developers. Browse courses, track your progress, and learn at your own pace.",
+        "Structured online courses from experienced instructors. Browse courses, track your progress, and learn at your own pace.",
     },
   ];
 }
 
 export async function loader({ request }: Route.LoaderArgs) {
-  const courses = buildCourseQuery(
-    null,
-    null,
-    CourseStatus.Published,
-    "newest",
-    50,
-    0
-  );
-  const featured = courses.slice(0, 3).map((course) => ({
-    ...course,
-    lessonCount: getLessonCountForCourse(course.id),
-  }));
-  const categories = getAllCategories();
+  const { newestCourses, totals } = homepage.get();
   const users = getAllUsers();
   const currentUserId = await getCurrentUserId(request);
   const currentUser = currentUserId ? getUserById(currentUserId) : null;
@@ -149,9 +54,8 @@ export async function loader({ request }: Route.LoaderArgs) {
   const countryTierInfo = getCountryTierInfo(devCountry);
 
   return {
-    featuredCourses: featured,
-    totalCourses: courses.length,
-    totalCategories: categories.length,
+    newestCourses,
+    totals,
     users: users.map((u) => ({ id: u.id, name: u.name, role: u.role })),
     currentUser: currentUser
       ? { id: currentUser.id, name: currentUser.name, role: currentUser.role }
@@ -162,11 +66,32 @@ export async function loader({ request }: Route.LoaderArgs) {
   };
 }
 
+function CatalogueTotal({
+  icon,
+  value,
+  label,
+}: {
+  icon: ReactNode;
+  value: number;
+  label: string;
+}) {
+  return (
+    <li className="flex items-center gap-4 px-6 py-5">
+      <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+        {icon}
+      </div>
+      <p className="flex items-baseline gap-2">
+        <span className="text-2xl font-bold">{value}</span>
+        <span className="text-sm text-muted-foreground">{label}</span>
+      </p>
+    </li>
+  );
+}
+
 export default function Home({ loaderData }: Route.ComponentProps) {
   const {
-    featuredCourses,
-    totalCourses,
-    totalCategories,
+    newestCourses,
+    totals,
     users,
     currentUser,
     devCountry,
@@ -234,115 +159,142 @@ export default function Home({ loaderData }: Route.ComponentProps) {
         </div>
       </header>
 
-      <section className="mx-auto max-w-6xl px-6 py-24 text-center">
-        <h1 className="text-5xl font-bold tracking-tight sm:text-6xl">
-          Learn to code,
-          <br />
-          <span className="text-muted-foreground">at your own pace</span>
-        </h1>
-        <p className="mx-auto mt-6 max-w-2xl text-lg text-muted-foreground">
-          Structured courses built by experienced instructors. Track your
-          progress, take quizzes, and build real-world skills.
-        </p>
-        <div className="mt-10 flex items-center justify-center gap-4">
-          <Button asChild size="lg">
-            <Link to="/courses">
-              Browse Courses
-              <ArrowRight className="ml-2 size-4" />
-            </Link>
-          </Button>
-        </div>
-      </section>
-
-      <section className="border-y border-border bg-muted/50 py-16">
-        <div className="mx-auto grid max-w-6xl grid-cols-1 gap-8 px-6 sm:grid-cols-3">
-          <div className="text-center">
-            <div className="mx-auto mb-3 flex size-12 items-center justify-center rounded-lg bg-primary/10">
-              <BookOpen className="size-6 text-primary" />
-            </div>
-            <p className="text-2xl font-bold">{totalCourses}</p>
-            <p className="text-sm text-muted-foreground">Available Courses</p>
-          </div>
-          <div className="text-center">
-            <div className="mx-auto mb-3 flex size-12 items-center justify-center rounded-lg bg-primary/10">
-              <GraduationCap className="size-6 text-primary" />
-            </div>
-            <p className="text-2xl font-bold">{totalCategories}</p>
-            <p className="text-sm text-muted-foreground">Categories</p>
-          </div>
-          <div className="text-center">
-            <div className="mx-auto mb-3 flex size-12 items-center justify-center rounded-lg bg-primary/10">
-              <Users className="size-6 text-primary" />
-            </div>
-            <p className="text-2xl font-bold">Self-paced</p>
-            <p className="text-sm text-muted-foreground">
-              Learn on your schedule
+      <main>
+        <section className="mx-auto grid max-w-6xl items-center gap-12 px-6 py-20 lg:grid-cols-[3fr_2fr]">
+          <div>
+            <p className="text-sm font-medium text-primary">
+              Online courses from experienced instructors
             </p>
-          </div>
-        </div>
-      </section>
-
-      {featuredCourses.length > 0 && (
-        <section className="mx-auto max-w-6xl px-6 py-20">
-          <div className="mb-10 flex items-end justify-between">
-            <div>
-              <h2 className="text-3xl font-bold tracking-tight">
-                Featured Courses
-              </h2>
-              <p className="mt-2 text-muted-foreground">
-                Start learning with our most popular courses
-              </p>
+            <h1 className="mt-4 text-5xl font-bold tracking-tight sm:text-6xl">
+              Build real skills,
+              <br />
+              <span className="text-muted-foreground">at your own pace.</span>
+            </h1>
+            <p className="mt-6 max-w-xl text-lg text-muted-foreground">
+              Structured courses you work through lesson by lesson. Check
+              yourself with quizzes, and pick up where you left off.
+            </p>
+            <div className="mt-10 flex flex-wrap items-center gap-4">
+              <Button asChild size="lg">
+                <Link to="/courses">
+                  Browse courses
+                  <ArrowRight className="ml-2 size-4" />
+                </Link>
+              </Button>
+              {currentUser ? (
+                <Button asChild size="lg" variant="outline">
+                  <Link to="/dashboard">Go to your dashboard</Link>
+                </Button>
+              ) : (
+                <Button asChild size="lg" variant="outline">
+                  <Link to="/signup">Create a free account</Link>
+                </Button>
+              )}
             </div>
-            <Button asChild variant="outline">
-              <Link to="/courses">
-                View all
-                <ArrowRight className="ml-2 size-4" />
-              </Link>
-            </Button>
           </div>
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {featuredCourses.map((course) => (
-              <Link
-                key={course.id}
-                to={`/courses/${course.slug}`}
-                className="group"
-              >
-                <Card className="h-full overflow-hidden pt-0 transition-shadow group-hover:shadow-md">
-                  <CourseImage
-                    src={course.coverImageUrl}
-                    alt={course.title}
-                    className="aspect-video w-full object-cover"
-                  />
-                  <CardHeader>
-                    <h3 className="font-semibold leading-snug group-hover:text-primary">
-                      {course.title}
-                    </h3>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="line-clamp-2 text-sm text-muted-foreground">
-                      {course.description}
-                    </p>
-                  </CardContent>
-                  <CardFooter className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span className="flex items-center gap-1">
-                      <User className="size-3" />
-                      {course.instructorName ?? "Instructor"}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <BookOpen className="size-3" />
-                      {course.lessonCount} lessons
-                    </span>
-                  </CardFooter>
-                </Card>
-              </Link>
-            ))}
-          </div>
+
+          <ul
+            aria-label="The catalogue"
+            className="divide-y divide-border rounded-xl border border-border bg-muted/50"
+          >
+            <CatalogueTotal
+              icon={<BookOpen className="size-5 text-primary" />}
+              value={totals.courses}
+              label={totals.courses === 1 ? "course" : "courses"}
+            />
+            <CatalogueTotal
+              icon={<Layers className="size-5 text-primary" />}
+              value={totals.lessons}
+              label={totals.lessons === 1 ? "lesson" : "lessons"}
+            />
+            <CatalogueTotal
+              icon={<GraduationCap className="size-5 text-primary" />}
+              value={totals.categories}
+              label={totals.categories === 1 ? "category" : "categories"}
+            />
+          </ul>
         </section>
-      )}
+
+        {newestCourses.length > 0 && (
+          <section className="border-t border-border">
+            <div className="mx-auto max-w-6xl px-6 py-20">
+              <div className="mb-10 flex flex-wrap items-end justify-between gap-4">
+                <div>
+                  <h2 className="text-3xl font-bold tracking-tight">
+                    New courses
+                  </h2>
+                  <p className="mt-2 text-muted-foreground">
+                    The latest courses from our instructors
+                  </p>
+                </div>
+                <Button asChild variant="outline">
+                  <Link to="/courses">
+                    View all courses
+                    <ArrowRight className="ml-2 size-4" />
+                  </Link>
+                </Button>
+              </div>
+              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                {newestCourses.map((course) => (
+                  <Link
+                    key={course.id}
+                    to={`/courses/${course.slug}`}
+                    className="group"
+                  >
+                    <Card className="h-full overflow-hidden pt-0 transition-shadow group-hover:shadow-md">
+                      <CourseImage
+                        src={course.coverImageUrl}
+                        alt={course.title}
+                        className="aspect-video w-full object-cover"
+                      />
+                      <CardHeader>
+                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                          {course.categoryName}
+                        </p>
+                        <h3 className="font-semibold leading-snug group-hover:text-primary">
+                          {course.title}
+                        </h3>
+                      </CardHeader>
+                      <CardContent>
+                        <p className="line-clamp-2 text-sm text-muted-foreground">
+                          {course.description}
+                        </p>
+                      </CardContent>
+                      <CardFooter className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1">
+                          <User className="size-3" />
+                          {course.instructorName}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <BookOpen className="size-3" />
+                          {course.lessonCount} lessons
+                        </span>
+                      </CardFooter>
+                    </Card>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
+      </main>
 
       <footer className="border-t border-border py-8">
-        <div className="mx-auto max-w-6xl px-6 text-center text-sm text-muted-foreground">
-          Cadence
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-6 px-6 text-sm text-muted-foreground">
+          <span className="font-semibold text-foreground">Cadence</span>
+          <Link to="/courses" className="hover:text-foreground">
+            Courses
+          </Link>
+          {!currentUser && (
+            <>
+              <Link to="/login" className="hover:text-foreground">
+                Log In
+              </Link>
+              <Link to="/signup" className="hover:text-foreground">
+                Sign Up
+              </Link>
+            </>
+          )}
         </div>
       </footer>
 
