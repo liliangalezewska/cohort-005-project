@@ -13,10 +13,8 @@ export type NoteLength = {
 // before they hit Save and the note is turned away.
 const NEAR_LIMIT_SHARE = 0.1;
 
-export function measureNoteLength(
-  body: string,
-  max: number = MAX_NOTE_LENGTH
-): NoteLength {
+export function measureNoteLength(body: string): NoteLength {
+  const max = MAX_NOTE_LENGTH;
   // Saving trims the body, so leading and trailing whitespace never counts
   // against the limit; counting it here would warn about a note that saves.
   const count = body.trim().length;

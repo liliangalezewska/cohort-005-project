@@ -25,17 +25,19 @@ describe("measureNoteLength", () => {
   });
 
   it("stays normal until a tenth of the limit is left", () => {
-    expect(measureNoteLength("x".repeat(89), 100).tone).toBe("normal");
-    expect(measureNoteLength("x".repeat(90), 100).tone).toBe("near-limit");
+    expect(measureNoteLength("x".repeat(1799)).tone).toBe("normal");
+    expect(measureNoteLength("x".repeat(1800)).tone).toBe("near-limit");
   });
 
   it("is near the limit when exactly at it, because that still saves", () => {
-    expect(measureNoteLength("x".repeat(100), 100).tone).toBe("near-limit");
+    expect(measureNoteLength("x".repeat(MAX_NOTE_LENGTH)).tone).toBe(
+      "near-limit"
+    );
   });
 
   it("is over the limit one character past it", () => {
-    expect(measureNoteLength("x".repeat(101), 100)).toMatchObject({
-      count: 101,
+    expect(measureNoteLength("x".repeat(MAX_NOTE_LENGTH + 1))).toMatchObject({
+      count: MAX_NOTE_LENGTH + 1,
       tone: "over-limit",
     });
   });
